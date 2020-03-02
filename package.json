@@ -49,14 +49,14 @@
       "ha-webhook": "nodes/webhook/webhook.js",
       "api-call-service": "nodes/call-service/call-service.js",
       "ha-entity": "nodes/entity/entity.js",
+      "ha-state-machine": "nodes/state-machine/state-machine.js",
       "ha-fire-event": "nodes/fire-event/fire-event.js",
       "api-current-state": "nodes/current-state/current-state.js",
       "ha-get-entities": "nodes/get-entities/get-entities.js",
       "api-get-history": "nodes/get-history/get-history.js",
       "api-render-template": "nodes/render-template/render-template.js",
       "ha-wait-until": "nodes/wait-until/wait-until.js",
-      "ha-api": "nodes/api/api.js",
-      "ha-state-machine": "nodes/state-machine/state-machine.js"
+      "ha-api": "nodes/api/api.js"
     }
   },
   "dependencies": {

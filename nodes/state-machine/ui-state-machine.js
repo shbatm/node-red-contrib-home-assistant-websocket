@@ -4,10 +4,16 @@ RED.nodes.registerType('ha-state-machine', {
     inputs: 1,
     outputs: 1,
     icon: 'font-awesome/fa-cogs',
-    align: 'right',
     paletteLabel: 'state-machine',
     label: function() {
         return this.name || `state-machine`;
+    },
+    outputLabels: function(index) {
+        const label = 'State';
+        if (this.outputs > 1) {
+            return this.states[index] || 'State ' + index;
+        }
+        return label;
     },
     labelStyle: nodeVersion.labelStyle,
     defaults: {
@@ -28,40 +34,44 @@ RED.nodes.registerType('ha-state-machine', {
         resend: { value: true },
         outputLocation: { value: 'payload' },
         outputLocationType: { value: 'msg' },
-        triggerProperty: {value: "payload", required: true},
-        triggerPropertyType: {value: "msg", required: true},
-        outputStateChangeOnly: {value: false},
-        throwException: {value: false},
-        discreteOutputs: {value: false},
-        states: {value: ["start", "", "", ""], validate: function(states) {
-                return (states.length > 0);
+        triggerProperty: { value: 'payload', required: true },
+        triggerPropertyType: { value: 'msg', required: true },
+        outputStateChangeOnly: { value: false },
+        throwException: { value: false },
+        discreteOutputs: { value: false },
+        states: {
+            value: ['start', '', '', ''],
+            validate: function(states) {
+                return states.length > 0;
             }
         },
-        transitions: {value: [{name:"", from: "", to: "", out: false},
-                            {name:"", from: "", to: "", out: false},
-                            {name:"", from: "", to: "", out: false}],
+        transitions: {
+            value: [
+                { name: '', from: '', to: '', out: false },
+                { name: '', from: '', to: '', out: false },
+                { name: '', from: '', to: '', out: false }
+            ],
             validate: function(transitions) {
-                return (transitions.length > 0) && (transitions.every(function(transition) {
-                    if (transition.name.length == 0) return false;
-                    if ((transition.from !== "*") &&
-                        (!this.states.includes(transition.from))) return false;
-                    if (!this.states.includes(transition.to)) return false;
-                    return true;
-                }, this));
+                return (
+                    transitions.length > 0 &&
+                    transitions.every(function(transition) {
+                        if (transition.name.length === 0) return false;
+                        if (
+                            transition.from !== '*' &&
+                            !this.states.includes(transition.from)
+                        )
+                            return false;
+                        if (!this.states.includes(transition.to)) return false;
+                        return true;
+                    }, this)
+                );
             }
         }
     },
     oneditprepare: function() {
         nodeVersion.check(this);
         const node = this;
-        const triggerTypes = [
-                'msg',
-                'flow',
-                'global',
-                'jsonata',
-                'str',
-                'num'
-            ];
+        const triggerTypes = ['msg', 'flow', 'global'];
         const attributeTypes = [
             'str',
             'num',
@@ -157,171 +167,270 @@ RED.nodes.registerType('ha-state-machine', {
             default: 'msg'
         });
 
-        const outputStateChangeOnly = $("#node-input-outputStateChangeOnly");
-        const discrete = $("#node-input-discreteOutputs");
-        discrete.change(function(){
+        const outputStateChangeOnly = $('#node-input-outputStateChangeOnly');
+        const discrete = $('#node-input-discreteOutputs');
+        discrete.change(function() {
             const discreteChosen = discrete.is(':checked');
-            if(discreteChosen) {
-                outputStateChangeOnly.attr("data-user-choice", outputStateChangeOnly.is(':checked'));
-                outputStateChangeOnly.prop('checked', true).attr("disabled", true);
-            }
-            else {
-                outputStateChangeOnly.prop('checked', outputStateChangeOnly.attr("data-user-choice"));
-                outputStateChangeOnly.removeAttr("disabled").removeAttr("data-user-choice");
+            if (discreteChosen) {
+                outputStateChangeOnly.attr(
+                    'data-user-choice',
+                    outputStateChangeOnly.is(':checked')
+                );
+                outputStateChangeOnly
+                    .prop('checked', true)
+                    .attr('disabled', true);
+            } else {
+                outputStateChangeOnly.prop(
+                    'checked',
+                    outputStateChangeOnly.attr('data-user-choice')
+                );
+                outputStateChangeOnly
+                    .removeAttr('disabled')
+                    .removeAttr('data-user-choice');
             }
         });
 
-        const outputCount = $("#node-input-outputDetails").val("{}");
-
-        const statesList = $("#node-input-states-container");
+        const outputCount = $('#node-input-outputDetails').val('{}');
+        const statesList = $('#node-input-states-container');
 
         statesList.editableList({
             addItem: function(container, i, state) {
-                if (typeof state != "string") state = "";
+                if (typeof state !== 'string') state = '';
 
-                const stateField = $('<input/>',{type: "text", style:"margin-left: 5px;", class: 'node-input-state-value'}).appendTo(container).focus();
+                const stateField = $('<input/>', {
+                    type: 'text',
+                    style: 'margin-left: 5px;',
+                    class: 'node-input-state-value'
+                })
+                    .appendTo(container)
+                    .focus();
 
-                const label = $("<label>", {style:"margin-left: 5px;"}).text("Initial State")
-                    .hide().appendTo(container);
+                const label = $('<label>', { style: 'margin-left: 5px;' })
+                    .text('Initial State')
+                    .hide()
+                    .appendTo(container);
 
-                if (i==0) label.show();
+                if (i === 0) label.show();
 
-                stateField.change( function (event) {
-                    const prevVal = $(this).data("prev");
-                    const newVal = $(this).val().trim();
+                stateField.change(function(event) {
+                    const prevVal = $(this).data('prev');
+                    const newVal = $(this)
+                        .val()
+                        .trim();
 
-                    if (newVal.length == 0) {
-                        $(".node-input-trigger-from-value option[value='" + prevVal +"']").remove();
-                        $(".node-input-trigger-to-value option[value='" + prevVal +"']").remove();
+                    if (newVal.length === 0) {
+                        $(
+                            ".node-input-trigger-from-value option[value='" +
+                                prevVal +
+                                "']"
+                        ).remove();
+                        $(
+                            ".node-input-trigger-to-value option[value='" +
+                                prevVal +
+                                "']"
+                        ).remove();
                         return;
                     }
 
-                    if ($(".node-input-trigger-from-value option[value='" + prevVal +"']").attr("value", newVal).text(newVal).length == 0) {
-                        $('.node-input-trigger-from-value').append($('<option>',{value: newVal, text: newVal}));
+                    if (
+                        $(
+                            ".node-input-trigger-from-value option[value='" +
+                                prevVal +
+                                "']"
+                        )
+                            .attr('value', newVal)
+                            .text(newVal).length === 0
+                    ) {
+                        $('.node-input-trigger-from-value').append(
+                            $('<option>', { value: newVal, text: newVal })
+                        );
                     }
 
-                    if ($(".node-input-trigger-to-value option[value='" + prevVal +"']")
-                            .attr("value", newVal).text(newVal).length == 0) {
-                        $('.node-input-trigger-to-value').append($('<option>',{value: newVal, text: newVal}));
+                    if (
+                        $(
+                            ".node-input-trigger-to-value option[value='" +
+                                prevVal +
+                                "']"
+                        )
+                            .attr('value', newVal)
+                            .text(newVal).length === 0
+                    ) {
+                        $('.node-input-trigger-to-value').append(
+                            $('<option>', { value: newVal, text: newVal })
+                        );
                     }
 
-                    $(this).data("prev", newVal);
-
+                    $(this).data('prev', newVal);
                 });
 
                 stateField.val(state);
-                stateField.data("prev", state);
+                stateField.data('prev', state);
 
-                const currentOutputs = JSON.parse(outputCount.val()||"{}");
+                const currentOutputs = JSON.parse(outputCount.val() || '{}');
                 currentOutputs[state] = i;
                 outputCount.val(JSON.stringify(currentOutputs));
             },
             removeItem: function(state) {
-
-                const currentOutputs = JSON.parse(outputCount.val()||"{}");
+                const currentOutputs = JSON.parse(outputCount.val() || '{}');
                 delete currentOutputs[state];
 
-                const select = $(".node-input-trigger-from-value")
-                    .filter( function(index, element) { return (element.value == state); });
-                $(".node-input-trigger-from-value option[value='" + state +"']").remove();
+                let select = $('.node-input-trigger-from-value').filter(
+                    function(index, element) {
+                        return element.value === state;
+                    }
+                );
+                $(
+                    ".node-input-trigger-from-value option[value='" +
+                        state +
+                        "']"
+                ).remove();
 
-                select.each(function(i,from) {
+                select.each(function(i, from) {
                     from.value = null;
                 });
 
-                select = $(".node-input-trigger-to-value")
-                    .filter( function(index, element) { return (element.value == state); });
-                $(".node-input-trigger-to-value option[value='" + state +"']").remove();
+                select = $('.node-input-trigger-to-value').filter(function(
+                    index,
+                    element
+                ) {
+                    return element.value === state;
+                });
+                $(
+                    ".node-input-trigger-to-value option[value='" + state + "']"
+                ).remove();
 
-                select.each(function(i,to) {
+                select.each(function(i, to) {
                     to.value = null;
                 });
 
-                $("#node-input-states-container").find("label").first().show();
+                $('#node-input-states-container')
+                    .find('label')
+                    .first()
+                    .show();
 
                 outputCount.val(JSON.stringify(currentOutputs));
             },
             sortItems: function(opt) {
-                const currentOutputs = JSON.parse(outputCount.val()||"{}");
+                const currentOutputs = JSON.parse(outputCount.val() || '{}');
 
-                const states = $("#node-input-states-container").editableList('items');
+                const states = $('#node-input-states-container').editableList(
+                    'items'
+                );
 
                 states.each(function(i) {
-                    const state = $(this).find(".node-input-state-value").val();
+                    const state = $(this)
+                        .find('.node-input-state-value')
+                        .val();
 
-                    $(".node-input-trigger-from-value").each( function () {
-                        $(this).find("option[value='" + state +"']")
-                        .insertBefore($(this).find("option:eq("+(i+1)+")"));
+                    $('.node-input-trigger-from-value').each(function() {
+                        $(this)
+                            .find("option[value='" + state + "']")
+                            .insertBefore(
+                                $(this).find('option:eq(' + (i + 1) + ')')
+                            );
                     });
 
-                    $(".node-input-trigger-to-value").each( function () {
-                        $(this).find("option[value='" + state +"']")
-                        .insertBefore($(this).find("option:eq("+i+")"));
+                    $('.node-input-trigger-to-value').each(function() {
+                        $(this)
+                            .find("option[value='" + state + "']")
+                            .insertBefore($(this).find('option:eq(' + i + ')'));
                     });
 
-                    if (i==0) $(this).find("label").show(); else $(this).find("label").hide();
+                    if (i === 0)
+                        $(this)
+                            .find('label')
+                            .show();
+                    else
+                        $(this)
+                            .find('label')
+                            .hide();
                 });
                 outputCount.val(JSON.stringify(currentOutputs));
             },
             sortable: true,
             removable: true,
             scrollOnAdd: true,
-            height: "auto",
-            addButton: "add state"
+            height: 'auto',
+            addButton: 'add state'
         });
 
-        const transitionsList = $("#node-input-transitions-container");
+        const transitionsList = $('#node-input-transitions-container');
 
         transitionsList.editableList({
             addItem: function(container, i, transition) {
-
-                if (!transition.hasOwnProperty('name')) {
-                    transition = {name:"", from: "", to: ""};
+                if (!Object.prototype.hasOwnProperty.call(transition, 'name')) {
+                    transition = { name: '', from: '', to: '' };
                 }
 
-                const row = $('<div/>',{class: "form-row", style: "display: flex; margin-bottom: 0;"}).appendTo(container);
+                const row = $('<div/>', {
+                    class: 'form-row',
+                    style: 'display: flex; margin-bottom: 0;'
+                }).appendTo(container);
 
-                const triggerField = $('<input/>',{type: "text", style:"margin-left: 5px; margin-bottom: 0;", class: 'node-input-trigger-value'}).appendTo(row).focus();
+                const triggerField = $('<input/>', {
+                    type: 'text',
+                    style: 'margin-left: 5px; margin-bottom: 0;',
+                    class: 'node-input-trigger-value'
+                })
+                    .appendTo(row)
+                    .focus();
 
                 triggerField.val(transition.name);
 
-                const row2 = $('<div/>',{class: "form-row", style: "display:inherit; margin-bottom: 0;"})
-                    .appendTo(row);
+                const row2 = $('<div/>', {
+                    class: 'form-row',
+                    style: 'display:inherit; margin-bottom: 0;'
+                }).appendTo(row);
 
-                const fromField = $('<select/>',{style:"margin-left: 5px; margin-bottom: 0; width: auto;", class: 'node-input-trigger-from-value'}).appendTo(row2);
+                const fromField = $('<select/>', {
+                    style: 'margin-left: 5px; margin-bottom: 0; width: auto;',
+                    class: 'node-input-trigger-from-value'
+                }).appendTo(row2);
 
-                row2.append("<span> &#8594; </span>");
+                row2.append('<span> &#8594; </span>');
 
-                const toField = $('<select/>',{style:"margin-left: 5px; margin-bottom: 0; width: auto;", class: 'node-input-trigger-to-value'}).appendTo(row2);
+                const toField = $('<select/>', {
+                    style: 'margin-left: 5px; margin-bottom: 0; width: auto;',
+                    class: 'node-input-trigger-to-value'
+                }).appendTo(row2);
 
-                fromField.append($('<option>',{value: '*', text: '*'}));
+                fromField.append($('<option>', { value: '*', text: '*' }));
 
-                const states = $("#node-input-states-container").editableList('items');
+                const states = $('#node-input-states-container').editableList(
+                    'items'
+                );
                 states.each(function(i) {
-                    const state = $(this).find(".node-input-state-value").val();
-                    if (state != "") {
-                        fromField.append($('<option>',{value: state, text: state}));
-                        toField.append($('<option>',{value: state, text: state}));
+                    const state = $(this)
+                        .find('.node-input-state-value')
+                        .val();
+                    if (state !== '') {
+                        fromField.append(
+                            $('<option>', { value: state, text: state })
+                        );
+                        toField.append(
+                            $('<option>', { value: state, text: state })
+                        );
                     }
                 });
 
                 fromField.val(transition.from);
                 toField.val(transition.to);
-
             },
             sortable: true,
             removable: true,
-            height: "auto",
+            height: 'auto',
             scrollOnAdd: true,
-            header: $("<div>").append($.parseHTML("<div style='width:65%; display: inline-grid; margin-left: 30px;'>Trigger</div><div style='display: inline-grid'>From &#8594; To</div>")),
+            header: $('<div>').append(
+                $.parseHTML(
+                    "<div style='width:65%; display: inline-grid; margin-left: 30px;'>Trigger</div><div style='display: inline-grid'>From &#8594; To</div>"
+                )
+            ),
 
-            addButton: "add transition"
+            addButton: 'add transition'
         });
 
-
-        statesList.editableList('addItems',this.states);
+        statesList.editableList('addItems', this.states);
         transitionsList.editableList('addItems', this.transitions);
-
     },
     oneditsave: function() {
         const node = this;
@@ -351,36 +460,48 @@ RED.nodes.registerType('ha-state-machine', {
             });
 
         node.states = [];
-        $("#node-input-states-container")
+        $('#node-input-states-container')
             .editableList('items')
-            .each(function(i){
-                const state = $(this).find(".node-input-state-value").val().trim();
+            .each(function(i) {
+                const state = $(this)
+                    .find('.node-input-state-value')
+                    .val()
+                    .trim();
                 if (state.length > 0) {
                     node.states.push(state);
                 }
             });
 
         node.transitions = [];
-        $("#node-input-transitions-container")
+        $('#node-input-transitions-container')
             .editableList('items')
-            .each(function(i){
-            const trigger = $(this).find(".node-input-trigger-value").val().trim();
+            .each(function(i) {
+                const trigger = $(this)
+                    .find('.node-input-trigger-value')
+                    .val()
+                    .trim();
                 if (trigger.length > 0) {
-                    node.transitions.push(
-                        {
-                            name: trigger,
-                            from: $(this).find(".node-input-trigger-from-value").val(),
-                            to: $(this).find(".node-input-trigger-to-value").val()
-                        });
+                    node.transitions.push({
+                        name: trigger,
+                        from: $(this)
+                            .find('.node-input-trigger-from-value')
+                            .val(),
+                        to: $(this)
+                            .find('.node-input-trigger-to-value')
+                            .val()
+                    });
                 }
             });
 
-        const outputs = 0;
-        if ($("#node-input-statePropertyType").val() == "msg") {
-            outputs = !$("#node-input-discreteOutputs").is(':checked') ? 1 : Object.keys(JSON.parse($("#node-input-outputDetails").val())).length;
+        let outputs = 0;
+        if ($('#node-input-outputLocationType').val() === 'msg') {
+            outputs = !$('#node-input-discreteOutputs').is(':checked')
+                ? 1
+                : Object.keys(JSON.parse($('#node-input-outputDetails').val()))
+                      .length;
         }
 
-        $("#node-input-outputs").val(outputs);
+        $('#node-input-outputs').val(outputs);
         node.outputs = outputs;
     }
 });

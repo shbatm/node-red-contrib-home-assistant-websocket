@@ -62,7 +62,7 @@ const nodeMap = {
     'trigger-state': { doc: 'trigger-state', type: 'trigger-state' },
     'wait-until': { doc: 'wait-until', type: 'ha-wait-until' },
     webhook: { doc: 'webhook', type: 'ha-webhook' },
-    'state-machine': { doc: 'state-machine', type: 'ha-state-machine'}
+    'state-machine': { doc: 'state-machine', type: 'ha-state-machine' }
 };
 
 let nodemonInstance;

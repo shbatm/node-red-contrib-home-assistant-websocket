@@ -15,19 +15,22 @@ module.exports = function(RED) {
             outputLocation: {},
             outputLocationType: nodeConfig =>
                 nodeConfig.outputLocationType || 'none',
-            triggerProperty: nodeConfig => nodeConfig.triggerProperty || 'payload',
-            triggerPropertyType: nodeConfig => nodeConfig.triggerPropertyType || 'msg',
+            triggerProperty: nodeConfig =>
+                nodeConfig.triggerProperty || 'payload',
+            triggerPropertyType: nodeConfig =>
+                nodeConfig.triggerPropertyType || 'msg',
             discreteOutputs: nodeConfig => nodeConfig.discreteOutputs || false,
-            outputStateChangeOnly: nodeConfig => nodeConfig.outputStateChangeOnly || false,
+            outputStateChangeOnly: nodeConfig =>
+                nodeConfig.outputStateChangeOnly || false,
             throwException: nodeConfig => nodeConfig.throwException || false,
             states: nodeConfig => nodeConfig.states || [],
             transitions: nodeConfig => nodeConfig.transitions || []
         },
         input: {
-            trigger: {
-                messageProp: 'payload',
-                configProp: 'triggerProperty',
-                default: 'payload'
+            attributes: {
+                messageProp: 'payload.attributes',
+                configProp: 'attributes',
+                default: []
             }
         }
     };
@@ -54,9 +57,9 @@ module.exports = function(RED) {
                 await this.registerEntity();
             }
 
-            let initState = this.states[0]
-            if (this.lastPayload && "state" in this.lastPayload) {
-                initState = this.lastPayload.state
+            let initState = this.states[0];
+            if (this.lastPayload && 'state' in this.lastPayload) {
+                initState = this.lastPayload.state;
             }
             try {
                 this.fsm = new StateMachine({
@@ -65,9 +68,9 @@ module.exports = function(RED) {
                 });
             } catch (e) {
                 this.setStatusFailed(e.message);
-                throw(e);
+                throw e;
             }
-            this.setStatusSuccess(initState);
+            this.setStatusSuccess(`State: ${initState}`);
         }
 
         setStatus(
@@ -82,9 +85,9 @@ module.exports = function(RED) {
 
         camelize(value) {
             return slugify(value, {
-                            replacement: '_',
-                            remove: /[^A-Za-z0-9-_~ ]/,
-                            lower: true
+                replacement: '_',
+                remove: /[^A-Za-z0-9-_~ ]/,
+                lower: true
             });
         }
 
@@ -121,7 +124,7 @@ module.exports = function(RED) {
             this.debugToClient(payload);
 
             await this.websocketClient.send(payload);
-            this.setStatusSuccess('Registered');
+            this.setStatusSuccess(`State: ${this.fsm.state}; Registered`);
             this.registered = true;
         }
 
@@ -183,19 +186,14 @@ module.exports = function(RED) {
                 return false;
             }
 
-            let trigger = parsedMessage.trigger.value;
-
-            try {
-                trigger = this.getValue(trigger, 'str', message);
-            } catch (e) {
-                this.setStatusFailed('Error');
-                this.node.error(`Trigger: ${e.message}`, message);
-                return;
-            }
+            let trigger = RED.util.evaluateNodeProperty(
+                this.nodeConfig.triggerProperty,
+                this.nodeConfig.triggerPropertyType,
+                this,
+                message
+            );
 
             if (trigger === undefined) {
-                this.error('Trigger must be defined.');
-                this.setStatusFailed('Error');
                 return;
             }
 
@@ -222,14 +220,14 @@ module.exports = function(RED) {
                 return;
             }
 
-            const transition = false;
+            let transition = false;
 
             if (this.fsm.can(trigger)) {
                 trigger = this.camelize(trigger);
                 this.fsm[trigger]();
                 transition = true;
             } else if (this.nodeConfig.throwException) {
-                this.node.error("Invalid transition", msg);
+                this.node.error('Invalid transition', message);
                 return null;
             }
 
@@ -238,11 +236,11 @@ module.exports = function(RED) {
                     type: 'nodered/entity',
                     server_id: this.nodeConfig.server.id,
                     node_id: this.id,
-                    state: state,
+                    state: this.fsm.state,
                     attributes: attr
                 };
                 this.lastPayload = {
-                    state: state,
+                    state: this.fsm.state,
                     attributes: attr
                 };
                 this.saveNodeData('lastPayload', this.lastPayload);
@@ -251,7 +249,7 @@ module.exports = function(RED) {
                 this.websocketClient
                     .send(payload)
                     .then(() => {
-                        this.setStatusSuccess(state);
+                        this.setStatusSuccess(this.fsm.state);
 
                         if (this.nodeConfig.outputLocationType !== 'none') {
                             this.setContextValue(
@@ -266,14 +264,18 @@ module.exports = function(RED) {
                             this.send(message);
                         } else {
                             const onward = [];
-                            onward[states.indexOf(this.fsm.state)] = message;
+                            onward[
+                                this.states.indexOf(this.fsm.state)
+                            ] = message;
                             this.send(onward);
                         }
                     })
                     .catch(err => {
                         this.error(
                             `Entity API error. ${
-                                err.message ? ` Error Message: ${err.message}` : ''
+                                err.message
+                                    ? ` Error Message: ${err.message}`
+                                    : ''
                             }`,
                             message
                         );

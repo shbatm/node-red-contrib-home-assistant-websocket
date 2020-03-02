@@ -7,7 +7,6 @@ _Needs [Custom Integration](https://github.com/zachowj/hass-node-red) installed
 in Home Assistant for this node to function_
 :::
 
-
 ## Details
 
 The state machine will always start in the first state of the list of states.
@@ -88,6 +87,4 @@ Key/Value pair of attributes to update. The key should be a string and value can
 
 ### References
 
-*   [Javascript State Machine](https://www.npmjs.com/package/javascript-state-machine) - full documentation of Javascript State Machine library.
-
-
+- [Javascript State Machine](https://www.npmjs.com/package/javascript-state-machine) - full documentation of Javascript State Machine library.

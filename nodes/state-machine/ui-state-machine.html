@@ -16,18 +16,18 @@
     <input type="hidden" id="node-input-triggerPropertyType" />
 </div>
 
+<div id="output-location-row" class="form-row">
+    <label for="node-input-outputLocation">Output Location</label>
+    <input type="hidden" id="node-input-outputLocationType" />
+    <input type="text" id="node-input-outputLocation" style="width: 68%;" />
+</div>
+
 <div id="attributes-row" class="form-row">
     <ol id="attributes"></ol>
 </div>
 
 <div id="config-row" class="form-row">
     <ol id="config"></ol>
-</div>
-
-<div id="output-location-row" class="form-row">
-    <label for="node-input-outputLocation">Output Location</label>
-    <input type="hidden" id="node-input-outputLocationType" />
-    <input type="text" id="node-input-outputLocation" style="width: 68%;" />
 </div>
 
 <div id="resend-row" class="form-row checkbox-option">
@@ -42,26 +42,32 @@
 
 <div id="discrete-outputs-row" class="form-row checkbox-option">
     <input type="checkbox" id="node-input-discreteOutputs" />
-    <label for="node-input-discreteOutputs">Use discrete outputs for states</label>
-    <input type="hidden" id="node-input-outputDetails">
+    <label for="node-input-discreteOutputs"
+        >Use discrete outputs for states</label
+    >
+    <input type="hidden" id="node-input-outputDetails" />
 </div>
 
 <div id="output-state-change-row" class="form-row checkbox-option">
     <input type="checkbox" id="node-input-outputStateChangeOnly" />
-    <label for="node-input-outputStateChangeOnly">Output only on state change</label>
+    <label for="node-input-outputStateChangeOnly"
+        >Output only on state change</label
+    >
 </div>
 
 <div id="throw-exception-row" class="form-row checkbox-option">
     <input type="checkbox" id="node-input-throwException" />
-    <label for="node-input-throwException">Throw error on invalid transition</label>
+    <label for="node-input-throwException"
+        >Throw error on invalid transition</label
+    >
 </div>
 
 <div class="form-row node-input-states-container-row">
-    <label><i class="fa fa-list"></i> States</span></label>
+    <label><i class="fa fa-list"></i> States</label>
     <ol id="node-input-states-container"></ol>
 </div>
 
 <div class="form-row node-input-transitions-container-row">
-    <label><i class="fa fa-list"></i> Transitions</span></label>
+    <label><i class="fa fa-list"></i> Transitions</label>
     <ol id="node-input-transitions-container"></ol>
 </div>
