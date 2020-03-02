@@ -45,6 +45,10 @@ Allows rendering of templates on input
 Outputs the state of an entity at regular intervals, optionally also at startup
 and every time the entity changes if desired
 
+## [State Machine](./state-machine.md)
+
+Creates a Finite State Machine and sensor
+
 ## [Server Config](./config-server.md)
 
 Home Assistant connection configuration
