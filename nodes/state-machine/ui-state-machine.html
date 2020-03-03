@@ -22,6 +22,19 @@
     <input type="text" id="node-input-outputLocation" style="width: 68%;" />
 </div>
 
+<div class="form-row">
+    <label for="node-input-timeoutUnits">
+        <i class="fa fa-clock-o"></i> Timeout Units
+    </label>
+    <select id="node-input-timeoutUnits" style="width:auto !important">
+        <option value="milliseconds">milliseconds</option>
+        <option value="seconds">seconds</option>
+        <option value="minutes">minutes</option>
+        <option value="hours">hours</option>
+        <option value="days">days</option>
+    </select>
+</div>
+
 <div id="attributes-row" class="form-row">
     <ol id="attributes"></ol>
 </div>
@@ -59,6 +72,13 @@
     <input type="checkbox" id="node-input-throwException" />
     <label for="node-input-throwException"
         >Throw error on invalid transition</label
+    >
+</div>
+
+<div id="output-dot-file-row" class="form-row checkbox-option">
+    <input type="checkbox" id="node-input-outputDotFileOnDeploy" />
+    <label for="node-input-outputDotFileOnDeploy"
+        >Output GraphVis Dot File on Deploy</label
     >
 </div>
 

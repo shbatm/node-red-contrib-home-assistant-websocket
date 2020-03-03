@@ -1,4 +1,6 @@
 const StateMachine = require('javascript-state-machine');
+const visualize = require('javascript-state-machine/lib/visualize');
+const Joi = require('@hapi/joi');
 const slugify = require('slugify');
 const EventsHaNode = require('../../lib/events-ha-node');
 
@@ -24,13 +26,36 @@ module.exports = function(RED) {
                 nodeConfig.outputStateChangeOnly || false,
             throwException: nodeConfig => nodeConfig.throwException || false,
             states: nodeConfig => nodeConfig.states || [],
-            transitions: nodeConfig => nodeConfig.transitions || []
+            transitions: nodeConfig => nodeConfig.transitions || [],
+            outputDotFileOnDeploy: nodeConfig =>
+                nodeConfig.outputDotFileOnDeploy || false.valueOf,
+            timeoutUnits: nodeConfig => nodeConfig.timeoutUnits || 'seconds'
         },
         input: {
             attributes: {
-                messageProp: 'payload.attributes',
+                messageProp: 'attributes',
                 configProp: 'attributes',
                 default: []
+            },
+            timeout: {
+                messageProp: 'timeout',
+                default: false
+            },
+            timeoutUnits: {
+                messageProp: 'timeoutUnits',
+                configProp: "timeoutUnits",
+                validation: {
+                    haltOnFail: true,
+                    schema: Joi.string()
+                        .valid(
+                            'milliseconds',
+                            'seconds',
+                            'minutes',
+                            'hours',
+                            'days'
+                        )
+                        .label('timeoutUnits')
+                }
             }
         }
     };
@@ -42,6 +67,9 @@ module.exports = function(RED) {
             this.states = this.nodeConfig.states;
             this.transitions = this.nodeConfig.transitions;
             this.fsm = undefined;
+            this.activeTimer = false;
+            this.expiresAt = false;
+            this.timeoutId = -1;
             this.init();
         }
 
@@ -57,10 +85,72 @@ module.exports = function(RED) {
                 await this.registerEntity();
             }
 
-            let initState = this.states[0];
-            if (this.lastPayload && 'state' in this.lastPayload) {
+            await this.createStateMachine();
+
+            if (this.nodeConfig.outputDotFileOnDeploy) {
+                const dotOutput = {
+                    id: this.id,
+                    name: this.name || '',
+                    msg: visualize(this.fsm)
+                };
+                this.RED.comms.publish('debug', dotOutput);
+            }
+        }
+
+        async createStateMachine() {
+            let initState = this.states[0].name;
+            if (
+                this.lastPayload &&
+                Object.prototype.hasOwnProperty.call(this.lastPayload, 'state')
+            ) {
                 initState = this.lastPayload.state;
             }
+
+            // Check if each state that has a timeout set, also has a timeout transition.
+            // Add one if it doesn't already exist.
+            this.states.forEach((state, i) => {
+                const timeout =
+                    !isNaN(state.stateTimeout) && state.stateTimeout > 0
+                        ? state.stateTimeout
+                        : false;
+                if (
+                    timeout &&
+                    !this.transitions.some(
+                        t => t.name === 'timeout' && t.from === state.name
+                    )
+                ) {
+                    const next = i < this.states.length - 1 ? i + 1 : 0;
+                    this.transitions.push({
+                        name: 'timeout',
+                        from: state.name,
+                        to: this.states[next].name
+                    });
+                }
+            });
+
+            // Add the transition for msg.initialize.
+            if (
+                !this.transitions.some(
+                    t => t.name === 'builtin_initialize_reset'
+                )
+            ) {
+                this.transitions.push({
+                    name: 'builtin_initialize_reset',
+                    from: '*',
+                    to: this.states[0].name
+                });
+            }
+            // Add the transition for msg.forceState.
+            if (!this.transitions.some(t => t.name === 'builtin_force_state')) {
+                this.transitions.push({
+                    name: 'builtin_force_state',
+                    from: '*',
+                    to: function(s) {
+                        return s;
+                    }
+                });
+            }
+
             try {
                 this.fsm = new StateMachine({
                     init: initState,
@@ -70,7 +160,46 @@ module.exports = function(RED) {
                 this.setStatusFailed(e.message);
                 throw e;
             }
-            this.setStatusSuccess(`State: ${initState}`);
+
+            let statusText = `State: ${initState}`;
+
+            // Check if there was an active timer before the node was restarted. See if we should restart.
+            if (
+                this.lastPayload &&
+                Object.prototype.hasOwnProperty.call(
+                    this.lastPayload,
+                    'activeTimer'
+                ) &&
+                this.lastPayload.activeTimer
+            ) {
+                if (
+                    Object.prototype.hasOwnProperty.call(
+                        this.lastPayload.attributes,
+                        'expires_at'
+                    )
+                ) {
+                    try {
+                        this.expiresAt = new Date(this.lastPayload.attributes.expires_at);
+                        if (this.expiresAt.getTime() > Date.now()) {
+                            this.createTimer(
+                                {},
+                                {},
+                                this.expiresAt.getTime() - Date.now()
+                            );
+                            statusText += ` until ${this.getTimeoutString(this.expiresAt)}`;
+                        } else {
+                            this.activeTimer = false;
+                            this.expiresAt = false;
+                            statusText += '; Timer Expired';
+                        }
+                    } catch (e) {
+                        this.setStatusFailed(e.message);
+                        throw e;
+                    }
+                }
+            }
+
+            this.setStatusSuccess(statusText);
         }
 
         setStatus(
@@ -124,7 +253,11 @@ module.exports = function(RED) {
             this.debugToClient(payload);
 
             await this.websocketClient.send(payload);
-            this.setStatusSuccess(`State: ${this.fsm.state}; Registered`);
+            let statusText = `State: ${this.fsm.state}`;
+            if (this.activeTimer && this.expiresAt !== false) {
+                statusText += ` until ${this.getTimeoutString(this.expiresAt)}`
+            }
+            this.setStatusSuccess(`${statusText}; Registered`);
             this.registered = true;
         }
 
@@ -170,15 +303,19 @@ module.exports = function(RED) {
         }
 
         handleInput({ parsedMessage, message }) {
-            if (!this.isConnected) {
-                this.setStatusFailed('No Connection');
-                this.error(
-                    'Sensor update attempted without connection to server.',
-                    message
-                );
+            clearTimeout(this.timeoutId);
 
+            if (
+                Object.prototype.hasOwnProperty.call(message, 'reset') &&
+                this.activeTimer
+            ) {
+                this.setStatusSuccess(`State: ${this.fsm.state}; Timer Reset`);
+                this.activeTimer = false;
+                // TODO: Status is not sent to HA if msg.reset is reeceived.
                 return;
             }
+
+            this.activeTimer = false;
 
             if (this.websocketClient.integrationVersion === 0) {
                 this.error(this.integrationErrorMessage);
@@ -193,13 +330,71 @@ module.exports = function(RED) {
                 message
             );
 
+            if (Object.prototype.hasOwnProperty.call(message, 'initalize')) {
+                trigger = 'builtin_initialize_reset';
+            } else if (
+                Object.prototype.hasOwnProperty.call(message, 'forceState') &&
+                typeof message.forceState === 'string'
+            ) {
+                trigger = 'builtin_force_state';
+            }
+
             if (trigger === undefined) {
                 return;
             }
 
-            const attributes = this.getAttributes(parsedMessage);
+            let transition = false;
+
+            if (this.fsm.can(trigger)) {
+                trigger = this.camelize(trigger);
+                if (trigger === 'builtin_force_state') {
+                    this.fsm.builtin_force_state(message.forceState);
+                } else {
+                    this.fsm[trigger]();
+                }
+                transition = true;
+            } else if (this.nodeConfig.throwException) {
+                this.node.error('Invalid transition', message);
+                return null;
+            }
 
             const attr = {};
+            let statusText = `State: ${this.fsm.state}`;
+            let timeout = this.states.filter(s => s.name === this.fsm.state)[0]
+                .stateTimeout;
+            if (
+                timeout &&
+                Object.prototype.hasOwnProperty.call(message, 'timeout')
+            ) {
+                timeout = parsedMessage.timeout.value;
+            }
+
+            if (!isNaN(timeout) && timeout > 0) {
+                let timeoutUnits = this.nodeConfig.timeoutUnits;
+                if (
+                    Object.prototype.hasOwnProperty.call(
+                        parsedMessage,
+                        'timeoutUnits'
+                    )
+                ) {
+                    timeoutUnits = parsedMessage.timeoutUnits.value;
+                }
+
+                statusText += this.getWaitStatusText(timeout, timeoutUnits);
+                timeout = this.getTimeoutInMilliseconds(timeout, timeoutUnits);
+                this.expiresAt = new Date(Date.now() + timeout);
+                attr.expires_at = this.expiresAt.toISOString();
+
+                this.createTimer(parsedMessage, message, timeout);
+            }
+
+            const attributes = Object.prototype.hasOwnProperty.call(
+                parsedMessage,
+                'attributes'
+            )
+                ? this.getAttributes(parsedMessage)
+                : this.nodeConfig.attributes;
+
             try {
                 attributes.forEach(x => {
                     // Change string to lower-case and remove unwanted characters
@@ -220,55 +415,32 @@ module.exports = function(RED) {
                 return;
             }
 
-            let transition = false;
+            const payload = {
+                type: 'nodered/entity',
+                server_id: this.nodeConfig.server.id,
+                node_id: this.id,
+                state: this.fsm.state,
+                attributes: attr
+            };
+            this.lastPayload = {
+                state: this.fsm.state,
+                attributes: attr,
+                activeTimer: this.activeTimer
+            };
+            this.saveNodeData('lastPayload', this.lastPayload);
+            this.debugToClient(payload);
 
-            if (this.fsm.can(trigger)) {
-                trigger = this.camelize(trigger);
-                this.fsm[trigger]();
-                transition = true;
-            } else if (this.nodeConfig.throwException) {
-                this.node.error('Invalid transition', message);
-                return null;
-            }
-
-            if (transition || !this.nodeConfig.outputStateChangeOnly) {
-                const payload = {
-                    type: 'nodered/entity',
-                    server_id: this.nodeConfig.server.id,
-                    node_id: this.id,
-                    state: this.fsm.state,
-                    attributes: attr
-                };
-                this.lastPayload = {
-                    state: this.fsm.state,
-                    attributes: attr
-                };
-                this.saveNodeData('lastPayload', this.lastPayload);
-                this.debugToClient(payload);
-
+            if (!this.isConnected) {
+                this.setStatusFailed('No Connection');
+                this.error(
+                    'Sensor update attempted without connection to server.',
+                    message
+                );
+            } else {
                 this.websocketClient
                     .send(payload)
                     .then(() => {
-                        this.setStatusSuccess(this.fsm.state);
-
-                        if (this.nodeConfig.outputLocationType !== 'none') {
-                            this.setContextValue(
-                                payload,
-                                this.nodeConfig.outputLocationType || 'msg',
-                                this.nodeConfig.outputLocation || 'payload',
-                                message
-                            );
-                        }
-
-                        if (!this.nodeConfig.discreteOutputs) {
-                            this.send(message);
-                        } else {
-                            const onward = [];
-                            onward[
-                                this.states.indexOf(this.fsm.state)
-                            ] = message;
-                            this.send(onward);
-                        }
+                        this.setStatusSuccess(statusText);
                     })
                     .catch(err => {
                         this.error(
@@ -282,21 +454,63 @@ module.exports = function(RED) {
                         this.setStatusFailed('API Error');
                     });
             }
+
+            if (transition || !this.nodeConfig.outputStateChangeOnly) {
+                if (this.nodeConfig.outputLocationType !== 'none') {
+                    this.setContextValue(
+                        this.fsm.state,
+                        this.nodeConfig.outputLocationType || 'msg',
+                        this.nodeConfig.outputLocation || 'payload',
+                        message
+                    );
+                }
+
+                if (!this.nodeConfig.discreteOutputs) {
+                    this.send(message);
+                } else {
+                    const onward = [];
+                    onward[
+                        this.states.findIndex(
+                            item => item.name === this.fsm.state
+                        )
+                    ] = message;
+                    this.send(onward);
+                }
+            }
         }
 
-        handleTriggerMessage(data = {}) {
-            const msg = {
-                topic: 'triggered',
-                payload: data.payload
-            };
+        createTimer(parsedMessage, message, timeout) {
+            this.activeTimer = true;
+            this.timeoutId = setTimeout(async () => {
+                this.activeTimer = false;
 
-            if (this.isEnabled) {
-                this.setStatusSuccess('triggered');
-                this.send([msg, null]);
-            } else {
-                this.setStatusFailed('triggered');
-                this.send([null, msg]);
-            }
+                // Delete any overrides from the previous message so we can reuse.
+                if (Object.prototype.hasOwnProperty.call(message, 'timeout')) {
+                    delete message.timeout;
+                }
+                if (
+                    Object.prototype.hasOwnProperty.call(
+                        parsedMessage,
+                        'timeoutUnits'
+                    )
+                ) {
+                    delete parsedMessage.timeoutUnits;
+                }
+
+                // Set the trigger to `timeout`
+                this.setContextValue(
+                    'timeout',
+                    this.nodeConfig.triggerPropertyType || 'msg',
+                    this.nodeConfig.triggerProperty || 'payload',
+                    message
+                );
+
+                // Call input handler as if this was a new message.
+                this.handleInput({
+                    parsedMessage: parsedMessage,
+                    message: message
+                });
+            }, timeout);
         }
 
         getAttributes(parsedMessage) {
@@ -379,6 +593,58 @@ module.exports = function(RED) {
             if (Object.prototype.hasOwnProperty.call(data, 'lastPayload')) {
                 this.lastPayload = data.lastPayload;
             }
+        }
+
+        getWaitStatusText(timeout, timeoutUnits) {
+            const timeoutMs = this.getTimeoutInMilliseconds(
+                timeout,
+                timeoutUnits
+            );
+            switch (timeoutUnits) {
+                case 'milliseconds':
+                    return ` for ${timeout} milliseconds`;
+                case 'hours':
+                case 'days':
+                    return ` until ${this.timeoutStatus(timeoutMs)}`;
+                case 'minutes':
+                default:
+                    return ` for ${timeout} ${timeoutUnits}: ${this.timeoutStatus(
+                        timeoutMs
+                    )}`;
+            }
+        }
+
+        getTimeoutInMilliseconds(timeout, timeoutUnits) {
+            switch (timeoutUnits) {
+                case 'milliseconds':
+                    return timeout;
+                case 'minutes':
+                    return timeout * (60 * 1000);
+                case 'hours':
+                    return timeout * (60 * 60 * 1000);
+                case 'days':
+                    return timeout * (24 * 60 * 60 * 1000);
+                default:
+                    return timeout * 1000;
+            }
+        }
+
+        timeoutStatus(milliseconds = 0) {
+            const timeout = Date.now() + milliseconds;
+            return this.getTimeoutString(new Date(timeout));
+        }
+
+        getTimeoutString(expiresAt) {
+            const timeoutStr = expiresAt.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour12: false,
+                hour: 'numeric',
+                minute: 'numeric',
+                second: 'numeric'
+            });
+
+            return timeoutStr;
         }
     }
 

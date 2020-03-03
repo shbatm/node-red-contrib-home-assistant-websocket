@@ -9,9 +9,9 @@ RED.nodes.registerType('ha-state-machine', {
         return this.name || `state-machine`;
     },
     outputLabels: function(index) {
-        const label = 'State';
+        const label = 'state';
         if (this.outputs > 1) {
-            return this.states[index] || 'State ' + index;
+            return this.states[index].name || 'state ' + index;
         }
         return label;
     },
@@ -37,12 +37,24 @@ RED.nodes.registerType('ha-state-machine', {
         triggerProperty: { value: 'payload', required: true },
         triggerPropertyType: { value: 'msg', required: true },
         outputStateChangeOnly: { value: false },
+        timeoutUnits: { value: 'seconds' },
         throwException: { value: false },
         discreteOutputs: { value: false },
+        outputDotFileOnDeploy: { value: false },
         states: {
-            value: ['start', '', '', ''],
+            value: [
+                { name: 'start', stateTimeout: false },
+                { name: '', stateTimeout: false },
+                { name: '', stateTimeout: false },
+                { name: '', stateTimeout: false }
+            ],
             validate: function(states) {
-                return states.length > 0;
+                return (
+                    states.length > 0 &&
+                    states.every(state => {
+                        return state.name.length !== 0;
+                    })
+                );
             }
         },
         transitions: {
@@ -58,10 +70,11 @@ RED.nodes.registerType('ha-state-machine', {
                         if (transition.name.length === 0) return false;
                         if (
                             transition.from !== '*' &&
-                            !this.states.includes(transition.from)
+                            !this.states.some(i => i.name === transition.from)
                         )
                             return false;
-                        if (!this.states.includes(transition.to)) return false;
+                        if (!this.states.some(i => i.name === transition.to))
+                            return false;
                         return true;
                     }, this)
                 );
@@ -195,22 +208,30 @@ RED.nodes.registerType('ha-state-machine', {
 
         statesList.editableList({
             addItem: function(container, i, state) {
-                if (typeof state !== 'string') state = '';
+                if (typeof state.name !== 'string') state.name = '';
+                if (!['number', 'string'].includes(typeof state.stateTimeout)) {
+                    state.stateTimeout = '';
+                }
+
+                const row = $('<div/>', {
+                    class: 'form-row',
+                    style: 'display: flex; margin-bottom: 0;'
+                }).appendTo(container);
 
                 const stateField = $('<input/>', {
                     type: 'text',
-                    style: 'margin-left: 5px;',
+                    style: 'margin-left: 5px; margin-bottom: 0; flex-grow: 5;',
                     class: 'node-input-state-value'
                 })
-                    .appendTo(container)
+                    .appendTo(row)
                     .focus();
 
-                const label = $('<label>', { style: 'margin-left: 5px;' })
-                    .text('Initial State')
-                    .hide()
-                    .appendTo(container);
-
-                if (i === 0) label.show();
+                const timeoutField = $('<input/>', {
+                    type: 'number',
+                    style:
+                        'margin-left: 5px; margin-bottom: 0;  min-width: 60px; width: 10%; flex-grow: 1;',
+                    class: 'node-input-state-timeout'
+                }).appendTo(row);
 
                 stateField.change(function(event) {
                     const prevVal = $(this).data('prev');
@@ -263,25 +284,26 @@ RED.nodes.registerType('ha-state-machine', {
                     $(this).data('prev', newVal);
                 });
 
-                stateField.val(state);
-                stateField.data('prev', state);
+                stateField.val(state.name);
+                stateField.data('prev', state.name);
+                timeoutField.val(state.stateTimeout);
 
                 const currentOutputs = JSON.parse(outputCount.val() || '{}');
-                currentOutputs[state] = i;
+                currentOutputs[state.name] = i;
                 outputCount.val(JSON.stringify(currentOutputs));
             },
             removeItem: function(state) {
                 const currentOutputs = JSON.parse(outputCount.val() || '{}');
-                delete currentOutputs[state];
+                delete currentOutputs[state.name];
 
                 let select = $('.node-input-trigger-from-value').filter(
                     function(index, element) {
-                        return element.value === state;
+                        return element.value === state.name;
                     }
                 );
                 $(
                     ".node-input-trigger-from-value option[value='" +
-                        state +
+                        state.name +
                         "']"
                 ).remove();
 
@@ -293,20 +315,17 @@ RED.nodes.registerType('ha-state-machine', {
                     index,
                     element
                 ) {
-                    return element.value === state;
+                    return element.value === state.name;
                 });
                 $(
-                    ".node-input-trigger-to-value option[value='" + state + "']"
+                    ".node-input-trigger-to-value option[value='" +
+                        state.name +
+                        "']"
                 ).remove();
 
                 select.each(function(i, to) {
                     to.value = null;
                 });
-
-                $('#node-input-states-container')
-                    .find('label')
-                    .first()
-                    .show();
 
                 outputCount.val(JSON.stringify(currentOutputs));
             },
@@ -335,15 +354,6 @@ RED.nodes.registerType('ha-state-machine', {
                             .find("option[value='" + state + "']")
                             .insertBefore($(this).find('option:eq(' + i + ')'));
                     });
-
-                    if (i === 0)
-                        $(this)
-                            .find('label')
-                            .show();
-                    else
-                        $(this)
-                            .find('label')
-                            .hide();
                 });
                 outputCount.val(JSON.stringify(currentOutputs));
             },
@@ -351,6 +361,11 @@ RED.nodes.registerType('ha-state-machine', {
             removable: true,
             scrollOnAdd: true,
             height: 'auto',
+            header: $('<div>').append(
+                $.parseHTML(
+                    "<div style='width:55%; display: inline-grid; margin-left: 30px;'>State Name</div><div style='min-width:10%; display: inline-grid; margin-right: 20px; float: right;'>Timeout</div>"
+                )
+            ),
             addButton: 'add state'
         });
 
@@ -422,7 +437,7 @@ RED.nodes.registerType('ha-state-machine', {
             scrollOnAdd: true,
             header: $('<div>').append(
                 $.parseHTML(
-                    "<div style='width:65%; display: inline-grid; margin-left: 30px;'>Trigger</div><div style='display: inline-grid'>From &#8594; To</div>"
+                    "<div style='width:55%; display: inline-grid; margin-left: 30px;'>Trigger</div><div style='display: inline-grid'>From &#8594; To</div>"
                 )
             ),
 
@@ -467,8 +482,18 @@ RED.nodes.registerType('ha-state-machine', {
                     .find('.node-input-state-value')
                     .val()
                     .trim();
+                let stateTimeout = $(this)
+                    .find('.node-input-state-timeout')
+                    .val()
+                    .trim();
+                stateTimeout = /^[1-9]\d*$/.test(stateTimeout)
+                    ? stateTimeout
+                    : false;
                 if (state.length > 0) {
-                    node.states.push(state);
+                    node.states.push({
+                        name: state,
+                        stateTimeout: stateTimeout
+                    });
                 }
             });
 
