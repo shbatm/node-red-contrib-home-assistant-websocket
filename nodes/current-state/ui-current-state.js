@@ -1,12 +1,12 @@
 RED.nodes.registerType('api-current-state', {
     category: 'home_assistant',
-    color: '#52C0F2',
+    color: '#5BCBF7',
     inputs: 1,
     outputs: 1,
     outputLabels: nodeVersion.ifStateLabels,
-    icon: 'code.png',
+    icon: 'ha-current-state.svg',
     paletteLabel: 'current state',
-    label: function() {
+    label: function () {
         return this.name || `current_state: ${this.entity_id}`;
     },
     labelStyle: nodeVersion.labelStyle,
@@ -25,9 +25,9 @@ RED.nodes.registerType('api-current-state', {
         override_payload: { value: 'msg' }, // state location type
         entity_location: { value: 'data' },
         override_data: { value: 'msg' }, // entity location types
-        blockInputOverrides: { value: false }
+        blockInputOverrides: { value: false },
     },
-    oneditprepare: function() {
+    oneditprepare: function () {
         nodeVersion.check(this);
 
         const $entityIdField = $('#entity_id');
@@ -37,12 +37,12 @@ RED.nodes.registerType('api-current-state', {
         const node = this;
 
         haServer.init(node, '#node-input-server');
-        haServer.autocomplete('entities', entities => {
+        haServer.autocomplete('entities', (entities) => {
             node.availableEntities = entities;
 
             $entityIdField.autocomplete({
                 source: node.availableEntities,
-                minLength: 0
+                minLength: 0,
             });
         });
 
@@ -63,18 +63,14 @@ RED.nodes.registerType('api-current-state', {
         }
 
         const NoneType = { value: 'none', label: 'None', hasValue: false };
-        $stateLocation
-            .typedInput({
-                types: ['msg', 'flow', 'global', NoneType],
-                typeField: '#node-input-override_payload'
-            })
-            .typedInput('width', '68%');
-        $entityLocation
-            .typedInput({
-                types: ['msg', 'flow', 'global', NoneType],
-                typeField: '#node-input-override_data'
-            })
-            .typedInput('width', '68%');
+        $stateLocation.typedInput({
+            types: ['msg', 'flow', 'global', NoneType],
+            typeField: '#node-input-override_payload',
+        });
+        $entityLocation.typedInput({
+            types: ['msg', 'flow', 'global', NoneType],
+            typeField: '#node-input-override_data',
+        });
 
         if (node.state_type === undefined) {
             $('#node-input-state_type').val('str');
@@ -90,7 +86,7 @@ RED.nodes.registerType('api-current-state', {
             'currentState'
         );
     },
-    oneditsave: function() {
+    oneditsave: function () {
         this.entity_id = $('#entity_id').val();
         let outputs = $('#node-input-halt_if').val() ? 2 : 1;
         // Swap inputs for the new 'if state' location
@@ -100,7 +96,4 @@ RED.nodes.registerType('api-current-state', {
         $('#node-input-outputs').val(outputs);
         nodeVersion.update(this);
     },
-    oneditresize: function() {
-        ifState.resize();
-    }
 });

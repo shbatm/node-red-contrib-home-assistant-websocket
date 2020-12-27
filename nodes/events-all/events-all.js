@@ -1,8 +1,13 @@
+const selectn = require('selectn');
+
 const EventsHaNode = require('../../lib/events-ha-node');
 
-module.exports = function(RED) {
+module.exports = function (RED) {
     const nodeOptions = {
-        config: { event_type: {} }
+        config: {
+            event_type: {},
+            waitForRunning: (nodeDef) => nodeDef.waitForRunning || true,
+        },
     };
 
     class ServerEventsNode extends EventsHaNode {
@@ -28,7 +33,7 @@ module.exports = function(RED) {
             }
 
             // Registering only needed event types
-            if (this.utils.selectn('nodeConfig.server.homeAssistant', this)) {
+            if (selectn('nodeConfig.server.homeAssistant', this)) {
                 this.nodeConfig.server.homeAssistant.eventsList[this.id] =
                     this.nodeConfig.event_type || '__ALL__';
                 this.updateEventList();
@@ -38,10 +43,17 @@ module.exports = function(RED) {
         onHaEventsAll(evt) {
             if (this.isEnabled === false) return;
 
+            if (
+                !this.isHomeAssistantRunning &&
+                this.nodeConfig.waitForRunning === true
+            ) {
+                return;
+            }
+
             this.send({
                 event_type: evt.event_type,
                 topic: evt.event_type,
-                payload: evt
+                payload: evt,
             });
             this.setStatusSuccess(evt.event_type);
         }
@@ -57,7 +69,7 @@ module.exports = function(RED) {
                     event_type: 'home_assistant_client',
                     topic: `home_assistant_client:${type}`,
                     payload: type,
-                    data: data
+                    data: data,
                 });
 
                 if (type === 'states_loaded' || type === 'services_loaded') {
@@ -88,6 +100,11 @@ module.exports = function(RED) {
         onHaEventsConnecting() {
             super.onHaEventsConnecting();
             this.clientEvent('connecting');
+        }
+
+        onHaEventsRunning() {
+            super.onHaEventsRunning();
+            this.clientEvent('running');
         }
 
         onHaEventsError(err) {

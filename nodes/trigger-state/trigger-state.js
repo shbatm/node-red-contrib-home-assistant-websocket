@@ -1,10 +1,12 @@
 /* eslint-disable camelcase */
-const EventsHaNode = require('../../lib/events-ha-node');
-const { reduce } = require('p-iteration');
-const RenderTemplate = require('../../lib/mustache-context');
-const utils = require('../../lib/utils');
+const cloneDeep = require('lodash.clonedeep');
+const selectn = require('selectn');
 
-module.exports = function(RED) {
+const EventsHaNode = require('../../lib/events-ha-node');
+const RenderTemplate = require('../../lib/mustache-context');
+const { shouldIncludeEvent } = require('../../lib/utils');
+
+module.exports = function (RED) {
     const nodeOptions = {
         debug: true,
         config: {
@@ -13,8 +15,8 @@ module.exports = function(RED) {
             constraints: {},
             customoutputs: {},
             outputinitially: {},
-            state_type: { value: 'str' }
-        }
+            state_type: { value: 'str' },
+        },
     };
 
     class TriggerState extends EventsHaNode {
@@ -36,11 +38,11 @@ module.exports = function(RED) {
 
             if (this.nodeConfig.outputinitially) {
                 // Here for when the node is deploy without the server config being deployed
-                if (this.isConnected) {
+                if (this.isHomeAssistantRunning) {
                     this.onDeploy();
                 } else {
                     this.addEventClientListener(
-                        'ha_client:states_loaded',
+                        'ha_client:initial_connection_ready',
                         this.onStatesLoaded.bind(this)
                     );
                 }
@@ -52,12 +54,14 @@ module.exports = function(RED) {
                 this.isEnabled = true;
                 this.saveNodeData('isEnabled', true);
                 this.updateConnectionStatus();
+                this.updateHomeAssistant();
                 return;
             }
             if (message === 'disable' || message.payload === 'disable') {
                 this.isEnabled = false;
                 this.saveNodeData('isEnabled', false);
                 this.updateConnectionStatus();
+                this.updateHomeAssistant();
                 return;
             }
 
@@ -66,15 +70,15 @@ module.exports = function(RED) {
                 const evt = {
                     event_type: 'state_changed',
                     entity_id: entity_id,
-                    event: message.payload
+                    event: message.payload,
                 };
 
                 this.onEntityStateChanged(evt);
             }
         }
 
-        async onDeploy() {
-            const entities = await this.nodeConfig.server.homeAssistant.getStates();
+        onDeploy() {
+            const entities = this.nodeConfig.server.homeAssistant.getStates();
             this.onStatesLoaded(entities);
         }
 
@@ -86,15 +90,15 @@ module.exports = function(RED) {
                     event: {
                         entity_id: entityId,
                         old_state: entities[entityId],
-                        new_state: entities[entityId]
-                    }
+                        new_state: entities[entityId],
+                    },
                 };
 
                 this.onEntityStateChanged(eventMessage);
             }
         }
 
-        async onEntityStateChanged(eventMessage) {
+        onEntityStateChanged(evt) {
             if (this.isEnabled === false) {
                 this.debugToClient(
                     'incoming: node is currently disabled, ignoring received event'
@@ -102,14 +106,17 @@ module.exports = function(RED) {
                 return;
             }
 
-            if (!this.utils.selectn('event.new_state', eventMessage)) {
+            if (
+                !selectn('event.new_state', evt) ||
+                !this.isHomeAssistantRunning
+            ) {
                 return;
             }
 
-            eventMessage = this.utils.merge({}, eventMessage);
+            const eventMessage = cloneDeep(evt);
 
             if (
-                !utils.shouldIncludeEvent(
+                !shouldIncludeEvent(
                     eventMessage.entity_id,
                     this.nodeConfig.entityid,
                     this.nodeConfig.entityidfiltertype
@@ -119,25 +126,14 @@ module.exports = function(RED) {
             }
 
             // Convert and save original state if needed
-            if (
-                this.nodeConfig.state_type &&
-                this.nodeConfig.state_type !== 'str'
-            ) {
-                if (eventMessage.event.old_state) {
-                    eventMessage.event.old_state.original_state =
-                        eventMessage.event.old_state.state;
-                    eventMessage.event.old_state.state = this.getCastValue(
-                        this.nodeConfig.state_type,
-                        eventMessage.event.old_state.state
-                    );
-                }
-                eventMessage.event.new_state.original_state =
-                    eventMessage.event.new_state.state;
-                eventMessage.event.new_state.state = this.getCastValue(
-                    this.nodeConfig.state_type,
-                    eventMessage.event.new_state.state
-                );
-            }
+            this.castState(
+                eventMessage.event.old_state,
+                this.nodeConfig.state_type
+            );
+            this.castState(
+                eventMessage.event.new_state,
+                this.nodeConfig.state_type
+            );
 
             try {
                 eventMessage.event.new_state.timeSinceChangedMs =
@@ -146,7 +142,7 @@ module.exports = function(RED) {
                         eventMessage.event.new_state.last_changed
                     ).getTime();
 
-                const constraintComparatorResults = await this.getConstraintComparatorResults(
+                const constraintComparatorResults = this.getConstraintComparatorResults(
                     this.nodeConfig.constraints,
                     eventMessage
                 );
@@ -163,7 +159,7 @@ module.exports = function(RED) {
                 let status = {
                     fill: 'green',
                     shape: 'dot',
-                    text: statusText
+                    text: statusText,
                 };
 
                 // If a constraint comparator failed we're done, also if no custom outputs to look at
@@ -175,7 +171,7 @@ module.exports = function(RED) {
                         status = {
                             fill: 'red',
                             shape: 'ring',
-                            text: statusText
+                            text: statusText,
                         };
                     }
                     this.debugToClient(
@@ -186,12 +182,12 @@ module.exports = function(RED) {
                     return this.send(outputs);
                 }
 
-                const customOutputsComparatorResults = await this.getCustomOutputsComparatorResults(
+                const customOutputsComparatorResults = this.getCustomOutputsComparatorResults(
                     this.nodeConfig.customoutputs,
                     eventMessage
                 );
                 const customOutputMessages = customOutputsComparatorResults.map(
-                    r => r.message
+                    (r) => r.message
                 );
 
                 outputs = outputs.concat(customOutputMessages);
@@ -217,7 +213,7 @@ module.exports = function(RED) {
             this.onEntityStateChanged(eventMessage);
         }
 
-        async getConstraintComparatorResults(constraints, eventMessage) {
+        getConstraintComparatorResults(constraints, eventMessage) {
             const comparatorResults = [];
 
             // Check constraints
@@ -226,48 +222,48 @@ module.exports = function(RED) {
                     comparatorType,
                     comparatorValue,
                     comparatorValueDatatype,
-                    propertyValue
+                    propertyValue,
                 } = constraint;
-                const constraintTarget = await this.getConstraintTargetData(
+                const constraintTarget = this.getConstraintTargetData(
                     constraint,
                     eventMessage.event
                 );
 
-                const actualValue = this.utils.selectn(
+                const actualValue = selectn(
                     constraint.propertyValue,
                     constraintTarget.state
                 );
 
-                const comparatorResult = await this.getComparatorResult(
+                const comparatorResult = this.getComparatorResult(
                     comparatorType,
                     comparatorValue,
                     actualValue,
                     comparatorValueDatatype,
                     {
                         entity: eventMessage.event.new_state,
-                        prevEntity: eventMessage.event.old_state
+                        prevEntity: eventMessage.event.old_state,
                     }
                 );
 
                 if (comparatorResult === false) {
                     this.debugToClient(
                         `constraint comparator: failed entity "${constraintTarget.entityid}" property "${propertyValue}" with value ${actualValue} failed "${comparatorType}" check against (${comparatorValueDatatype}) ${comparatorValue}`
-                    ); // eslint-disable-line
+                    );
                 }
 
                 comparatorResults.push({
                     constraint,
                     constraintTarget,
                     actualValue,
-                    comparatorResult
+                    comparatorResult,
                 });
             }
             const failedComparators = comparatorResults.filter(
-                res => !res.comparatorResult
+                (res) => !res.comparatorResult
             );
             return {
                 all: comparatorResults || [],
-                failed: failedComparators || []
+                failed: failedComparators || [],
             };
         }
 
@@ -277,7 +273,7 @@ module.exports = function(RED) {
             const msg = {
                 topic: entity_id,
                 payload: event.new_state.state,
-                data: eventMessage
+                data: eventMessage,
             };
             let outputs;
 
@@ -295,47 +291,40 @@ module.exports = function(RED) {
         }
 
         getCustomOutputsComparatorResults(outputs, eventMessage) {
-            return reduce(
-                outputs,
-                async (acc, output, reduceIndex) => {
-                    const result = {
-                        output,
-                        comparatorMatched: true,
-                        actualValue: null,
-                        message: null
-                    };
+            return outputs.reduce((acc, output) => {
+                const result = {
+                    output,
+                    comparatorMatched: true,
+                    actualValue: null,
+                    message: null,
+                };
 
-                    if (output.comparatorPropertyType !== 'always') {
-                        result.actualValue = this.utils.selectn(
-                            output.comparatorPropertyValue,
-                            eventMessage.event
-                        );
-                        result.comparatorMatched = await this.getComparatorResult(
-                            output.comparatorType,
-                            output.comparatorValue,
-                            result.actualValue,
-                            output.comparatorValueDatatype,
-                            {
-                                entity: eventMessage.event.new_state,
-                                prevEntity: eventMessage.event.old_state
-                            }
-                        );
-                    }
-                    result.message = this.getOutputMessage(
-                        result,
-                        eventMessage
+                if (output.comparatorPropertyType !== 'always') {
+                    result.actualValue = selectn(
+                        output.comparatorPropertyValue,
+                        eventMessage.event
                     );
-                    acc.push(result);
-                    return acc;
-                },
-                []
-            );
+                    result.comparatorMatched = this.getComparatorResult(
+                        output.comparatorType,
+                        output.comparatorValue,
+                        result.actualValue,
+                        output.comparatorValueDataType,
+                        {
+                            entity: eventMessage.event.new_state,
+                            prevEntity: eventMessage.event.old_state,
+                        }
+                    );
+                }
+                result.message = this.getOutputMessage(result, eventMessage);
+                acc.push(result);
+                return acc;
+            }, []);
         }
 
-        async getConstraintTargetData(constraint, triggerEvent) {
+        getConstraintTargetData(constraint, triggerEvent) {
             const targetData = {
                 entityid: null,
-                state: null
+                state: null,
             };
             try {
                 const isTargetThisEntity =
@@ -346,7 +335,7 @@ module.exports = function(RED) {
 
                 targetData.state = isTargetThisEntity
                     ? triggerEvent
-                    : await this.nodeConfig.server.homeAssistant.getStates(
+                    : this.nodeConfig.server.homeAssistant.getStates(
                           targetData.entityid
                       );
 
@@ -355,7 +344,7 @@ module.exports = function(RED) {
                     constraint.propertyType === 'current_state'
                 ) {
                     targetData.state = {
-                        new_state: targetData.state
+                        new_state: targetData.state,
                     };
                 }
             } catch (e) {
@@ -376,8 +365,8 @@ module.exports = function(RED) {
             // If comparator did not match
             if (!comparatorMatched) {
                 this.debugToClient(
-                    `output comparator failed: property "${output.comparatorPropertyValue}" with value ${actualValue} failed "${output.comparatorType}" check against ${output.comparatorValue}`
-                ); // eslint-disable-line
+                    `output comparator failed: property "${output.comparatorPropertyValue}" with value ${actualValue} failed "${output.comparatorType}" check against (${output.comparatorValueDataType}) ${output.comparatorValue}`
+                );
                 return null;
             }
 
@@ -391,7 +380,7 @@ module.exports = function(RED) {
                     output.messageValue,
                     eventMessage.event,
                     this.node.context(),
-                    this.utils.toCamelCase(this.nodeConfig.server.name)
+                    this.nodeConfig.server.name
                 );
 
                 switch (output.messageValueType) {
@@ -419,7 +408,7 @@ module.exports = function(RED) {
             return {
                 topic: eventMessage.entity_id,
                 payload,
-                data: eventMessage
+                data: eventMessage,
             };
         }
     }

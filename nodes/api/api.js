@@ -1,8 +1,9 @@
-const RenderTemplate = require('../../lib/mustache-context');
-const BaseNode = require('../../lib/base-node');
-const Joi = require('@hapi/joi');
+const Joi = require('joi');
 
-module.exports = function(RED) {
+const BaseNode = require('../../lib/base-node');
+const RenderTemplate = require('../../lib/mustache-context');
+
+module.exports = function (RED) {
     const nodeOptions = {
         config: {
             name: {},
@@ -11,10 +12,10 @@ module.exports = function(RED) {
             method: {},
             path: {},
             data: {},
-            dataType: nodeDef => nodeDef.dataType || 'json',
+            dataType: (nodeDef) => nodeDef.dataType || 'json',
             location: {},
             locationType: {},
-            responseType: {}
+            responseType: {},
         },
         input: {
             protocol: {
@@ -25,32 +26,28 @@ module.exports = function(RED) {
                     haltOnFail: true,
                     schema: Joi.string()
                         .valid('websocket', 'http')
-                        .label('protocol')
-                }
+                        .label('protocol'),
+                },
             },
             method: {
                 messageProp: 'payload.method',
                 configProp: 'method',
                 validation: {
                     haltOnFail: true,
-                    schema: Joi.string()
-                        .valid('get', 'post')
-                        .label('method')
-                }
+                    schema: Joi.string().valid('get', 'post').label('method'),
+                },
             },
             path: {
                 messageProp: 'payload.path',
                 configProp: 'path',
                 validation: {
                     haltOnFail: true,
-                    schema: Joi.string()
-                        .allow('')
-                        .label('path')
-                }
+                    schema: Joi.string().allow('').label('path'),
+                },
             },
             data: {
                 messageProp: 'payload.data',
-                configProp: 'data'
+                configProp: 'data',
             },
             dataType: {
                 messageProp: 'payload.dataType',
@@ -60,8 +57,8 @@ module.exports = function(RED) {
                     haltOnFail: true,
                     schema: Joi.string()
                         .valid('json', 'jsonata')
-                        .label('dataType')
-                }
+                        .label('dataType'),
+                },
             },
             location: {
                 messageProp: 'payload.location',
@@ -69,8 +66,8 @@ module.exports = function(RED) {
                 default: 'payload',
                 validation: {
                     haltOnFail: true,
-                    schema: Joi.string().label('location')
-                }
+                    schema: Joi.string().label('location'),
+                },
             },
             locationType: {
                 messageProp: 'payload.locationType',
@@ -80,8 +77,8 @@ module.exports = function(RED) {
                     haltOnFail: true,
                     schema: Joi.string()
                         .valid('msg', 'flow', 'global', 'none')
-                        .label('locationType')
-                }
+                        .label('locationType'),
+                },
             },
             responseType: {
                 messageProp: 'payload.responseType',
@@ -90,10 +87,10 @@ module.exports = function(RED) {
                 validation: {
                     schema: Joi.string()
                         .valid('json', 'text', 'arraybuffer')
-                        .label('responseType')
-                }
-            }
-        }
+                        .label('responseType'),
+                },
+            },
+        },
     };
     class ApiNode extends BaseNode {
         constructor(nodeDefinition) {
@@ -114,7 +111,6 @@ module.exports = function(RED) {
                 return;
             }
 
-            const serverName = node.utils.toCamelCase(config.server.name);
             let data;
             if (parsedMessage.dataType.value === 'jsonata') {
                 try {
@@ -133,7 +129,7 @@ module.exports = function(RED) {
                         : parsedMessage.data.value,
                     message,
                     node.node.context(),
-                    serverName
+                    config.server.name
                 );
             }
 
@@ -145,7 +141,7 @@ module.exports = function(RED) {
                     parsedMessage.path.value,
                     message,
                     node.node.context(),
-                    serverName
+                    config.server.name
                 ).replace(/^\/(?:api\/)?/, '');
 
                 if (!path) {
@@ -191,7 +187,7 @@ module.exports = function(RED) {
             node.setStatusSending();
 
             return apiCall()
-                .then(results => {
+                .then((results) => {
                     node.setStatusSuccess(
                         `${parsedMessage.protocol.value} called`
                     );
@@ -205,7 +201,7 @@ module.exports = function(RED) {
 
                     node.send(message);
                 })
-                .catch(err => {
+                .catch((err) => {
                     node.error(
                         'API Error. ' + err.message
                             ? `Error Message: ${err.message}`

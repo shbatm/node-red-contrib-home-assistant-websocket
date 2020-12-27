@@ -1,12 +1,12 @@
 RED.nodes.registerType('ha-wait-until', {
     category: 'home_assistant',
-    color: '#52C0F2',
+    color: '#5BCBF7',
     inputs: 1,
     outputs: 1,
     outputLabels: ['', 'timed out'],
-    icon: 'wait-until.png',
+    icon: 'ha-wait-until.svg',
     paletteLabel: 'wait until',
-    label: function() {
+    label: function () {
         return this.name || `wait until`;
     },
     labelStyle: nodeVersion.labelStyle,
@@ -26,26 +26,26 @@ RED.nodes.registerType('ha-wait-until', {
         entityLocation: { value: 'data' },
         entityLocationType: { value: 'none' },
         checkCurrentState: { value: true },
-        blockInputOverrides: { value: true }
+        blockInputOverrides: { value: true },
     },
-    oneditprepare: function() {
+    oneditprepare: function () {
         const node = this;
 
         haServer.init(node, '#node-input-server');
         let availableEntities = [];
         let availableProperties = [];
-        haServer.autocomplete('entities', entities => {
+        haServer.autocomplete('entities', (entities) => {
             availableEntities = entities;
             $('#node-input-entityId').autocomplete({
                 source: availableEntities,
-                minLength: 0
+                minLength: 0,
             });
         });
-        haServer.autocomplete('properties', properties => {
+        haServer.autocomplete('properties', (properties) => {
             availableProperties = properties;
             $('#node-input-property').autocomplete({
                 source: availableProperties,
-                minLength: 0
+                minLength: 0,
             });
         });
 
@@ -63,17 +63,15 @@ RED.nodes.registerType('ha-wait-until', {
             'msg',
             'flow',
             'global',
-            entityType
+            entityType,
         ];
-        $('#node-input-value')
-            .typedInput({
-                default: 'str',
-                types: defaultTypes,
-                typeField: '#node-input-valueType'
-            })
-            .typedInput('width', '45%');
+        $('#node-input-value').typedInput({
+            default: 'str',
+            types: defaultTypes,
+            typeField: '#node-input-valueType',
+        });
 
-        $('#node-input-comparator').change(function(e) {
+        $('#node-input-comparator').change(function (e) {
             let types = defaultTypes;
 
             $('#node-input-property').prop(
@@ -95,7 +93,7 @@ RED.nodes.registerType('ha-wait-until', {
                         'msg',
                         'flow',
                         'global',
-                        entityType
+                        entityType,
                     ];
                     break;
                 case 'includes':
@@ -113,9 +111,9 @@ RED.nodes.registerType('ha-wait-until', {
             .typedInput({
                 default: 'num',
                 types: ['num', 'jsonata'],
-                typeField: '#node-input-timeoutType'
+                typeField: '#node-input-timeoutType',
             })
-            .on('change', function(_, timeoutType) {
+            .on('change', function (_, timeoutType) {
                 if (timeoutType === true) return;
 
                 node.outputs =
@@ -126,12 +124,10 @@ RED.nodes.registerType('ha-wait-until', {
             });
 
         const NoneType = { value: 'none', label: 'None', hasValue: false };
-        $('#node-input-entityLocation')
-            .typedInput({
-                types: ['msg', 'flow', 'global', NoneType],
-                typeField: '#node-input-entityLocationType'
-            })
-            .typedInput('width', '68%');
+        $('#node-input-entityLocation').typedInput({
+            types: ['msg', 'flow', 'global', NoneType],
+            typeField: '#node-input-entityLocationType',
+        });
 
         // Set defaults if undefined
         if (node.blockInputOverrides === undefined) {
@@ -139,8 +135,8 @@ RED.nodes.registerType('ha-wait-until', {
         }
         const $filterType = $('#node-input-entityIdFilterType');
         $filterType.val(node.entityIdFilterType || 'exact');
-        $filterType.on('change', function() {
+        $filterType.on('change', function () {
             $('.exact-only').toggle($filterType.val() === 'exact');
         });
-    }
+    },
 });

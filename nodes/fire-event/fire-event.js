@@ -1,15 +1,16 @@
-const Joi = require('@hapi/joi');
+const Joi = require('joi');
+
 const BaseNode = require('../../lib/base-node');
 const RenderTemplate = require('../../lib/mustache-context');
 
-module.exports = function(RED) {
+module.exports = function (RED) {
     const nodeOptions = {
         config: {
             name: {},
             server: { isNode: true },
             event: {},
             data: {},
-            dataType: nodeDef => nodeDef.dataType || 'json'
+            dataType: (nodeDef) => nodeDef.dataType || 'json',
         },
         input: {
             event: {
@@ -17,16 +18,16 @@ module.exports = function(RED) {
                 configProp: 'event',
                 validation: {
                     haltOnFail: true,
-                    schema: Joi.string().label('event')
-                }
+                    schema: Joi.string().label('event'),
+                },
             },
             data: {
                 messageProp: 'payload.data',
                 configProp: 'data',
                 validation: {
                     haltOnFail: false,
-                    schema: Joi.string().label('data')
-                }
+                    schema: Joi.string().label('data'),
+                },
             },
             dataType: {
                 messageProp: 'payload.dataType',
@@ -36,10 +37,10 @@ module.exports = function(RED) {
                     haltOnFail: true,
                     schema: Joi.string()
                         .valid('json', 'jsonata')
-                        .label('dataType')
-                }
-            }
-        }
+                        .label('dataType'),
+                },
+            },
+        },
     };
 
     class FireEventNode extends BaseNode {
@@ -64,7 +65,7 @@ module.exports = function(RED) {
                 parsedMessage.event.value,
                 message,
                 this.node.context(),
-                this.utils.toCamelCase(this.nodeConfig.server.name)
+                this.nodeConfig.server.name
             );
             let eventData;
             if (parsedMessage.dataType.value === 'jsonata') {
@@ -84,7 +85,7 @@ module.exports = function(RED) {
                         : parsedMessage.data.value,
                     message,
                     this.node.context(),
-                    this.utils.toCamelCase(this.nodeConfig.server.name)
+                    this.nodeConfig.server.name
                 );
             }
 
@@ -92,7 +93,7 @@ module.exports = function(RED) {
 
             message.payload = {
                 event: eventType,
-                data: eventData || null
+                data: eventData || null,
             };
 
             this.setStatusSending();
@@ -103,7 +104,7 @@ module.exports = function(RED) {
                     this.setStatusSuccess(eventType);
                     this.send(message);
                 })
-                .catch(err => {
+                .catch((err) => {
                     this.error(
                         `Error firing event, home assistant rest api error: ${err.message}`,
                         message

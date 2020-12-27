@@ -1,9 +1,10 @@
-const BaseNode = require('../../lib/base-node');
+const Joi = require('joi');
+const selectn = require('selectn');
 const { shuffle } = require('lodash');
-const { filter } = require('p-iteration');
-const Joi = require('@hapi/joi');
 
-module.exports = function(RED) {
+const BaseNode = require('../../lib/base-node');
+
+module.exports = function (RED) {
     const nodeOptions = {
         debug: true,
         config: {
@@ -14,7 +15,7 @@ module.exports = function(RED) {
             output_empty_results: {},
             output_location_type: {},
             output_location: {},
-            output_results_count: {}
+            output_results_count: {},
         },
         input: {
             outputType: {
@@ -25,8 +26,8 @@ module.exports = function(RED) {
                     haltOnFail: true,
                     schema: Joi.string()
                         .valid('array', 'count', 'random', 'split')
-                        .label('OutputType')
-                }
+                        .label('OutputType'),
+                },
             },
             outputEmptyResults: {
                 messageProp: 'payload.outputEmptyResults',
@@ -34,8 +35,8 @@ module.exports = function(RED) {
                 default: false,
                 validation: {
                     haltOnFail: true,
-                    schema: Joi.boolean().label('outputEmptyResults')
-                }
+                    schema: Joi.boolean().label('outputEmptyResults'),
+                },
             },
             outputLocationType: {
                 messageProp: 'payload.outputLocationType',
@@ -45,8 +46,8 @@ module.exports = function(RED) {
                     haltOnFail: true,
                     schema: Joi.string()
                         .valid('array', 'msg', 'flow', 'global')
-                        .label('outputLocationType')
-                }
+                        .label('outputLocationType'),
+                },
             },
             outputLocation: {
                 messageProp: 'payload.outputLocation',
@@ -54,8 +55,8 @@ module.exports = function(RED) {
                 default: 'payload',
                 validation: {
                     haltOnFail: true,
-                    schema: Joi.string().label('outputLocation')
-                }
+                    schema: Joi.string().label('outputLocation'),
+                },
             },
             outputResultsCount: {
                 messageProp: 'payload.outputResultsCount',
@@ -63,8 +64,8 @@ module.exports = function(RED) {
                 default: 1,
                 validation: {
                     haltOnFail: true,
-                    schema: Joi.number().label('outputResultsCount')
-                }
+                    schema: Joi.number().label('outputResultsCount'),
+                },
             },
             rules: {
                 messageProp: 'payload.rules',
@@ -78,7 +79,7 @@ module.exports = function(RED) {
                                 property: Joi.when('logic', {
                                     is: 'jsonata',
                                     then: Joi.any(),
-                                    otherwise: Joi.string()
+                                    otherwise: Joi.string(),
                                 }),
                                 logic: Joi.string().valid(
                                     'is',
@@ -104,13 +105,13 @@ module.exports = function(RED) {
                                     'flow',
                                     'global',
                                     'entity'
-                                )
+                                ),
                             })
                         )
-                        .label('rules')
-                }
-            }
-        }
+                        .label('rules'),
+                },
+            },
+        },
     };
 
     class GetEntitiesNode extends BaseNode {
@@ -119,7 +120,7 @@ module.exports = function(RED) {
         }
 
         /* eslint-disable camelcase */
-        async onInput({ message, parsedMessage }) {
+        onInput({ message, parsedMessage }) {
             let noPayload = false;
 
             if (this.nodeConfig.server === null) {
@@ -127,34 +128,34 @@ module.exports = function(RED) {
                 return;
             }
 
-            const states = await this.nodeConfig.server.homeAssistant.getStates();
+            const states = this.nodeConfig.server.homeAssistant.getStates();
             if (!states) {
                 this.node.warn(
                     'local state cache missing sending empty payload'
                 );
                 return {
-                    payload: {}
+                    payload: {},
                 };
             }
 
             let entities;
             try {
-                entities = await filter(Object.values(states), async entity => {
+                entities = Object.values(states).filter((entity) => {
                     const rules = parsedMessage.rules.value;
 
                     entity.timeSinceChangedMs =
                         Date.now() - new Date(entity.last_changed).getTime();
 
                     for (const rule of rules) {
-                        const value = this.utils.selectn(rule.property, entity);
-                        const result = await this.getComparatorResult(
+                        const value = selectn(rule.property, entity);
+                        const result = this.getComparatorResult(
                             rule.logic,
                             rule.value,
                             value,
                             rule.valueType,
                             {
                                 message,
-                                entity
+                                entity,
                             }
                         );
                         if (

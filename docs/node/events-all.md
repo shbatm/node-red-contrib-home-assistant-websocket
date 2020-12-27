@@ -24,6 +24,12 @@ overload the WebSocket message queue.
 [GitHub Issue #153](https://github.com/zachowj/node-red-contrib-home-assistant-websocket/issues/153#issuecomment-539290950)
 :::
 
+### Output only after Home Assistant is running
+
+- Type: `boolean`
+
+What until Home Assistant has reported its state as `running` before outputing events. Client events will always output.
+
 ### Expose to Home Assistant
 
 - Type: `boolean`
@@ -38,19 +44,31 @@ to be installed in Home Assistant
 
 - Type: `string`
 
-event_type
+Will contain the event type.
 
 ### event_type
 
 - Type: `string`
 
-event_type
+Event type of the event.
 
 ### payload
 
 - Type: `object`
 
 original event object
+
+### origin
+
+- Type: `string`
+
+### time_fired
+
+- Type: `DateTime`
+
+### context
+
+- Type: `object`
 
 ## Client Events
 
@@ -65,3 +83,4 @@ Events sent from the client:
 - **error** - when a disconnect happens of the WebSocket with an error
 - **states_loaded** - the first time all states are loaded from HA
 - **services_loaded** - the first time all services are loaded from HA
+- **running** - when HA is in a running state and states have been loaded

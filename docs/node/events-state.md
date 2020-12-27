@@ -30,6 +30,16 @@ If the conditional is evaluated as true send the message to the first output oth
 
 - [Conditionals](/guide/conditionals.md)
 
+### For
+
+- Type: `number`
+
+An amount of time an entity's state needs to be in that state before triggering.
+
+::: warning
+Output on Connect state changes will not start a timer.
+:::
+
 ### State Type
 
 - Type: `string`
@@ -38,11 +48,11 @@ If the conditional is evaluated as true send the message to the first output oth
 
 Convert the state of the entity to the selected type. Boolean will be converted to true based on if the string is equal by default to (`y|yes|true|on|home|open`). Original value stored in msg.data.original_state
 
-### Output only on state change
+### Ignore state change event
 
 - Type: `boolean`
 
-Output only when the state has changed and not on startup/deploy
+A list of possible states that will be ignore if seletected.
 
 ### Output on Connect
 

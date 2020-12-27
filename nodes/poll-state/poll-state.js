@@ -1,32 +1,30 @@
 /* eslint-disable camelcase */
 const ta = require('time-ago');
+
 const EventsHaNode = require('../../lib/events-ha-node');
 
-module.exports = function(RED) {
+module.exports = function (RED) {
     const nodeOptions = {
         config: {
-            entity_id: nodeDef => (nodeDef.entity_id || '').trim(),
-            updateinterval: nodeDef =>
+            entity_id: (nodeDef) => (nodeDef.entity_id || '').trim(),
+            updateinterval: (nodeDef) =>
                 !isNaN(nodeDef.updateinterval)
                     ? Number(nodeDef.updateinterval)
                     : 60,
             updateIntervalUnits: {},
             outputinitially: {},
             outputonchanged: {},
-            state_type: nodeDef => nodeDef.state_type || 'str',
+            state_type: (nodeDef) => nodeDef.state_type || 'str',
             halt_if: {},
-            halt_if_type: nodeDef => nodeDef.halt_if_type || 'str',
-            halt_if_compare: nodeDef => nodeDef.halt_if_compare || 'is'
-        }
+            halt_if_type: (nodeDef) => nodeDef.halt_if_type || 'str',
+            halt_if_compare: (nodeDef) => nodeDef.halt_if_compare || 'is',
+        },
     };
 
     class TimeSinceStateNode extends EventsHaNode {
         constructor(nodeDefinition) {
             super(nodeDefinition, RED, nodeOptions);
-            this.init();
-        }
 
-        init() {
             if (!this.nodeConfig.entity_id) {
                 throw new Error('Entity Id is required');
             }
@@ -58,10 +56,14 @@ module.exports = function(RED) {
             }
 
             if (this.nodeConfig.outputinitially) {
-                this.addEventClientListener(
-                    'ha_client:states_loaded',
-                    this.onTimer.bind(this)
-                );
+                if (this.isHomeAssistantRunning) {
+                    this.onTimer();
+                } else {
+                    this.addEventClientListener(
+                        'ha_client:initial_connection_ready',
+                        this.onTimer.bind(this)
+                    );
+                }
             }
         }
 
@@ -73,17 +75,15 @@ module.exports = function(RED) {
             }
         }
 
-        async onTimer(triggered = false) {
-            if (!this.isConnected || this.isEnabled === false) return;
+        onTimer(triggered = false) {
+            if (!this.isHomeAssistantRunning || this.isEnabled === false) {
+                return;
+            }
 
-            const pollState = this.utils.merge(
-                {},
-                await this.nodeConfig.server.homeAssistant.getStates(
-                    this.nodeConfig.entity_id
-                )
+            const pollState = this.nodeConfig.server.homeAssistant.getStates(
+                this.nodeConfig.entity_id
             );
-
-            if (!pollState.entity_id) {
+            if (!pollState) {
                 this.error(
                     `could not find state with entity_id "${this.nodeConfig.entity_id}"`,
                     {}
@@ -91,7 +91,7 @@ module.exports = function(RED) {
                 this.status({
                     fill: 'red',
                     shape: 'ring',
-                    text: `no state found for ${this.nodeConfig.entity_id}`
+                    text: `no state found for ${this.nodeConfig.entity_id}`,
                 });
                 return;
             }
@@ -108,29 +108,23 @@ module.exports = function(RED) {
             pollState.timeSinceChangedMs = Date.now() - dateChanged.getTime();
 
             // Convert and save original state if needed
-            if (this.nodeConfig.state_type !== 'str') {
-                pollState.original_state = pollState.state;
-                pollState.state = this.getCastValue(
-                    this.nodeConfig.state_type,
-                    pollState.state
-                );
-            }
+            this.castState(pollState, this.nodeConfig.state_type);
 
             const msg = {
                 topic: this.nodeConfig.entity_id,
                 payload: pollState.state,
-                data: pollState
+                data: pollState,
             };
 
             let isIfState;
             try {
-                isIfState = await this.getComparatorResult(
+                isIfState = this.getComparatorResult(
                     this.nodeConfig.halt_if_compare,
                     this.nodeConfig.halt_if,
                     pollState.state,
                     this.nodeConfig.halt_if_type,
                     {
-                        entity: pollState
+                        entity: pollState,
                     }
                 );
             } catch (e) {
